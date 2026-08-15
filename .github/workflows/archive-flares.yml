@@ -1,8 +1,8 @@
-name: Archive M/X flares
+name: Archive C1+ flares
 
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 */3 * * *'
   workflow_dispatch: {}
 
 permissions:
@@ -22,5 +22,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add archive/
-          git diff --cached --quiet || git commit -m "Archive M/X flare snapshots"
+          git diff --cached --quiet || git commit -m "Archive flare snapshots (C1+)"
           git push
