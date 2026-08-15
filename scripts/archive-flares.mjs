@@ -1,4 +1,4 @@
-// Scans NOAA's rolling 7-day GOES X-ray feed for C5-class-and-stronger flare peaks and
+// Scans NOAA's rolling 7-day GOES X-ray feed for C1-class-and-stronger flare peaks and
 // archives each one as a standalone JSON window file, so events survive
 // after they roll off NOAA's 7-day retention. Run by .github/workflows/archive-flares.yml.
 import { writeFile, mkdir, readFile } from 'fs/promises';
@@ -7,7 +7,7 @@ import { existsSync } from 'fs';
 const NOAA_URL = 'https://services.swpc.noaa.gov/json/goes/secondary/xrays-7-day.json';
 const ARCHIVE_DIR = 'archive';
 const INDEX_PATH = `${ARCHIVE_DIR}/index.json`;
-const PEAK_THRESHOLD = 5e-6; // C5 and above
+const PEAK_THRESHOLD = 1e-6; // C1 and above
 
 function classify(flux) {
   if (flux >= 1e-4) return { letter: 'X', label: 'X' + (flux / 1e-4).toFixed(1) };
