@@ -77,9 +77,35 @@ async function main() {
     added++;
   }
 
+  // Top-up pass: events archived soon after their peak were stored with an incomplete
+  // post-peak window. While they are still inside NOAA's 7-day feed, refill them.
+  let topped = 0;
+  const feedLast = new Date(series[series.length - 1].time_tag).getTime();
+  for (const entry of index) {
+    const peakTs = new Date(entry.peakTime).getTime();
+    const wantTo = peakTs + 180 * 60000;
+    if (feedLast < peakTs) continue;
+    const path = `${ARCHIVE_DIR}/${entry.file}`;
+    if (!existsSync(path)) continue;
+    let doc;
+    try { doc = JSON.parse(await readFile(path, 'utf8')); } catch { continue; }
+    const have = doc.window && doc.window.length
+      ? new Date(doc.window[doc.window.length - 1].time_tag).getTime() : 0;
+    if (have >= Math.min(wantTo, feedLast) - 60000) continue;
+    const from = peakTs - 60 * 60000;
+    const refreshed = series.filter(d => {
+      const t = new Date(d.time_tag).getTime();
+      return t >= from && t <= wantTo;
+    });
+    if (refreshed.length <= (doc.window || []).length) continue;
+    doc.window = refreshed.map(d => ({ time_tag: d.time_tag, flux: d.flux }));
+    await writeFile(path, JSON.stringify(doc));
+    topped++;
+  }
+
   index.sort((a, b) => new Date(b.peakTime) - new Date(a.peakTime));
   await writeFile(INDEX_PATH, JSON.stringify(index, null, 2));
-  console.log(`Archived ${added} new event(s). Total: ${index.length}.`);
+  console.log(`Archived ${added} new event(s), topped up ${topped}. Total: ${index.length}.`);
 }
 
 main().catch(e => { console.error(e); process.exit(1); });
