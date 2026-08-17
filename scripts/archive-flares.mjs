@@ -1,4 +1,4 @@
-// Scans NOAA's rolling 7-day GOES X-ray feed for C1-class-and-stronger flare peaks and
+// Scans NOAA's rolling 7-day GOES X-ray feed for C5-class-and-stronger flare peaks and
 // archives each one as a standalone JSON window file, so events survive
 // after they roll off NOAA's 7-day retention. Run by .github/workflows/archive-flares.yml.
 import { writeFile, mkdir, readFile } from 'fs/promises';
@@ -7,7 +7,7 @@ import { existsSync } from 'fs';
 const NOAA_URL = 'https://services.swpc.noaa.gov/json/goes/secondary/xrays-7-day.json';
 const ARCHIVE_DIR = 'archive';
 const INDEX_PATH = `${ARCHIVE_DIR}/index.json`;
-const PEAK_THRESHOLD = 1e-6; // C1 and above
+const PEAK_THRESHOLD = 5e-6; // C5 and above
 
 function classify(flux) {
   if (flux >= 1e-4) return { letter: 'X', label: 'X' + (flux / 1e-4).toFixed(1) };
@@ -27,24 +27,30 @@ async function main() {
     .sort((a, b) => new Date(a.time_tag) - new Date(b.time_tag));
   if (!series.length) { console.log('No data from NOAA'); return; }
 
-  // find contiguous runs above the threshold; the run's max flux/time is the flare peak.
-  const events = [];
-  let run = [];
-  for (const d of series) {
-    if (d.flux >= PEAK_THRESHOLD) {
-      run.push(d);
-    } else if (run.length) {
-      events.push(run);
-      run = [];
+  // Local-maximum detection with prominence relative to the local background, so flares are
+  // still separated when the background floor stays above an absolute fall threshold.
+  const HALF = 10, BACK = 60, PROM = 1.4, SEP = 25;
+  const flux = series.map(d => d.flux);
+  const cands = [];
+  for (let i = 0; i < flux.length; i++) {
+    if (flux[i] < PEAK_THRESHOLD) continue;
+    let isMax = true;
+    for (let j = Math.max(0, i - HALF); j <= Math.min(flux.length - 1, i + HALF); j++) {
+      if (flux[j] > flux[i] || (flux[j] === flux[i] && j < i)) { isMax = false; break; }
     }
+    if (!isMax) continue;
+    let base = Infinity;
+    for (let j = Math.max(0, i - BACK); j < i; j++) if (flux[j] < base) base = flux[j];
+    if (!isFinite(base) || flux[i] < base * PROM) continue;
+    cands.push(i);
   }
-  if (run.length) events.push(run);
-
-  const peaks = events.map(run => {
-    let best = run[0];
-    for (const d of run) if (d.flux > best.flux) best = d;
-    return best;
-  });
+  const peakIdx = [];
+  for (const i of cands) {
+    const prev = peakIdx[peakIdx.length - 1];
+    if (prev != null && i - prev < SEP) { if (flux[i] > flux[prev]) peakIdx[peakIdx.length - 1] = i; continue; }
+    peakIdx.push(i);
+  }
+  const peaks = peakIdx.map(i => series[i]);
 
   if (!existsSync(ARCHIVE_DIR)) await mkdir(ARCHIVE_DIR, { recursive: true });
   let index = [];
